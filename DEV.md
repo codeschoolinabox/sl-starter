@@ -57,7 +57,7 @@ Internal architecture, conventions, and implementation details for contributors.
 | Multiple things from one file  | Split into separate files                                         |
 | Destructured object params     | Default empty object: `{ ... } = {}`                              |
 | Boolean functions              | Prefix with `is`/`has`/`can`/`should`                             |
-| Return values (objects/arrays) | Deep freeze: `deepFreeze` (external) or `deepFreezeInPlace` (own) |
+| Return values (objects/arrays) | Deep freeze (clone+freeze for external, freeze-in-place for own)  |
 
 ### 1. Export Conventions
 
@@ -457,9 +457,6 @@ function isPlainObject(thing: unknown): thing is Record<string, unknown> {
 }
 ```
 
-Real examples: `src/utils/is-plain-object.ts`, `src/api/trace.ts` (lines 33–58 guard
-then line 76 executes).
-
 #### Named intermediate variables
 
 When a sub-expression has a clear identity, capture it in a `const`. Name the thing, then
@@ -632,17 +629,19 @@ Objects and arrays returned from functions must be deep frozen before leaving th
 boundary. These libraries are consumed by LLMs — freezing catches accidental mutation at the
 return boundary rather than producing silent bugs downstream.
 
-**Two utilities, one ownership rule:**
+**Two operations, one ownership rule:**
 
-| Utility             | When to use                                      | Behavior                      |
-| ------------------- | ------------------------------------------------ | ----------------------------- |
-| `deepFreeze`        | Objects we don't own (caller-provided, external) | Clones first, returns new ref |
-| `deepFreezeInPlace` | Objects we just built (fresh results, wrappers)  | Freezes in place, same ref    |
+| Operation       | When to use                                      | Behavior                      |
+| --------------- | ------------------------------------------------ | ----------------------------- |
+| Clone + freeze  | Objects we don't own (caller-provided, external) | Clones first, returns new ref |
+| Freeze in place | Objects we just built (fresh results, wrappers)  | Freezes in place, same ref    |
 
 The distinction is about **ownership**: if you just constructed the object (e.g., a spread
-result, a new config wrapper), use `deepFreezeInPlace` — there's no reason to clone something
+result, a new config wrapper), freeze it in place — there's no reason to clone something
 nobody else has a reference to. If the object came from outside (a parameter, imported data),
-use `deepFreeze` to avoid mutating the caller's data.
+clone-then-freeze to avoid mutating the caller's data.
+
+Use a deep-freeze utility from your package's dependencies for both operations.
 
 **What to freeze:**
 
@@ -658,13 +657,13 @@ unacceptable. Document with a `// perf: skip freeze — [reason]` comment.
 // ✅ — freshly built result, freeze in place
 function createResult(steps, meta) {
   const result = { ok: true, steps, meta };
-  return deepFreezeInPlace(result);
+  return freezeInPlace(result); // your deep-freeze utility
 }
 
 // ✅ — caller-provided config, clone + freeze
 function resolveConfig(userConfig) {
-  const resolved = deepMerge(defaults, userConfig);
-  return deepFreeze(resolved);
+  const resolved = merge(defaults, userConfig); // your deep-merge utility
+  return cloneAndFreeze(resolved); // your deep-freeze utility
 }
 
 // ❌ — returned object is mutable; LLM consumer can accidentally mutate
@@ -683,13 +682,13 @@ for all files and directories. Match filename to export: `createConfig` → `cre
 Every source directory under `src/` has a `README.md`. Directories with non-obvious
 architecture or key design decisions also have a `DOCS.md`:
 
-| Content                                              | Where                        | Audience     |
-| ---------------------------------------------------- | ---------------------------- | ------------ |
-| API reference (signatures, params, returns, throws)  | JSDoc/TSDoc → `docs/`        | Consumers    |
-| Consumer-facing "why" context                        | TSDoc `@remarks` → `docs/`   | Consumers    |
-| What this module does, how to navigate it            | `README.md` per directory    | Contributors |
-| Architecture, design decisions, why this approach    | `DOCS.md` per directory      | Developers   |
-| Non-obvious implementation detail                    | Inline `//` comment          | Code readers |
+| Content                                             | Where                      | Audience     |
+| --------------------------------------------------- | -------------------------- | ------------ |
+| API reference (signatures, params, returns, throws) | JSDoc/TSDoc → `docs/`      | Consumers    |
+| Consumer-facing "why" context                       | TSDoc `@remarks` → `docs/` | Consumers    |
+| What this module does, how to navigate it           | `README.md` per directory  | Contributors |
+| Architecture, design decisions, why this approach   | `DOCS.md` per directory    | Developers   |
+| Non-obvious implementation detail                   | Inline `//` comment        | Code readers |
 
 **Rules:**
 
@@ -719,35 +718,6 @@ architecture or key design decisions also have a `DOCS.md`:
  */
 function createConfig(options: UserOptions = {}): ResolvedConfig { ... }
 ```
-
-### src/utils/ — Deep Object Helpers
-
-`src/utils/` ships with the template. These are pure, browser-compatible helpers for
-immutable-style programming with nested data structures. Use them instead of writing
-your own or pulling in a library.
-
-| File                      | What it does                                               |
-| ------------------------- | ---------------------------------------------------------- |
-| `deep-clone.ts`           | Deep copy; handles Date, RegExp, Set, Map, cycles          |
-| `deep-freeze.ts`          | Returns frozen copy; original untouched                    |
-| `deep-freeze-in-place.ts` | Freezes in place; same reference, no clone (owned objects) |
-| `deep-merge.ts`           | Merges configs; user values win, objects go deep           |
-| `deep-equal.ts`           | Structural equality; same type universe as clone           |
-| `is-plain-object.ts`      | True for `{}` literals; false for class instances          |
-
-Import directly (no barrel):
-
-```typescript
-import deepClone from './utils/deep-clone.js';
-import deepEqual from './utils/deep-equal.js';
-import deepFreeze from './utils/deep-freeze.js';
-import deepFreezeInPlace from './utils/deep-freeze-in-place.js';
-import deepMerge from './utils/deep-merge.js';
-import isPlainObject from './utils/is-plain-object.js';
-```
-
-Boundary rule: `utils` files can only import from other `utils` files. Non-utils source
-files can import from both `src` and `utils`. See ESLint config and `src/utils/README.md`.
 
 ### Test Organization
 
@@ -798,7 +768,7 @@ npm run validate  # lint + type-check + test
 - [ ] Tests in `tests/` subdirectory (not alongside source files), `.test.ts` suffix
 - [ ] Tests cover happy path and edge cases
 - [ ] No mutations of input data
-- [ ] Returned objects/arrays are deep frozen (`deepFreeze` or `deepFreezeInPlace`)
+- [ ] Returned objects/arrays are deep frozen (clone-then-freeze for external, freeze-in-place for own)
 - [ ] Errors handled gracefully
 - [ ] `README.md` exists in every modified directory
 - [ ] JSDoc/TSDoc on public functions; `@remarks` for consumer-facing "why"
@@ -814,7 +784,6 @@ All unit tests live in a `tests/` subdirectory co-located with the source they t
 Each exported function has a dedicated test file in the nearest `tests/` subdirectory:
 
 ```typescript
-// src/utils/tests/parse-json.test.ts
 import { expect, test } from 'vitest';
 
 import parseJSON from '../parse-json.js';
@@ -1123,26 +1092,22 @@ how to fix.
 Import boundaries are enforced via `eslint-plugin-boundaries`. This catches architectural
 violations at lint time.
 
-### Template: Two Layers (`utils` + `src`)
+### Template: Single Layer (`src`)
 
-The template ships with two layers: a pure utility layer (`src/utils/**`) and a general
-source layer (`src/**`). Utils can only import from other utils; everything else can import
-from both.
+The template ships with one layer: all source files under `src/**` can import from each
+other. As your package grows, add more specific layers to enforce architectural boundaries.
 
 ```javascript
 // eslint.config.js — current template setup
 'boundaries/elements': [
-  // utils listed first — src/utils/** matches 'utils' before the broader 'src' catch-all
-  { type: 'utils', pattern: 'src/utils/**', mode: 'file' },
-  { type: 'src',   pattern: 'src/**',       mode: 'file' },
+  { type: 'src', pattern: 'src/**', mode: 'file' },
 ],
 'boundaries/element-types': [
   'error',
   {
     default: 'disallow',
     rules: [
-      { from: 'src',   allow: ['src', 'utils'] },
-      { from: 'utils', allow: ['utils'] },
+      { from: 'src', allow: ['src'] },
     ],
   },
 ],
@@ -1150,15 +1115,15 @@ from both.
 
 ### Expanding for Your Package
 
-When your package grows internal layers (e.g., `api/`, `configuring/`, `errors/`), expand
-the elements and add `element-types` rules:
+When your package grows internal layers (e.g., `api/`, `configuring/`, `errors/`), add
+elements with more specific patterns (listed before the `src` catch-all) and matching
+`element-types` rules:
 
 ```javascript
-// Example: two-layer package
+// Example: multi-layer package
 'boundaries/elements': [
   { type: 'entry', pattern: 'src/index.ts', mode: 'file' },
   { type: 'core',  pattern: 'src/core/*',   mode: 'file' },
-  { type: 'utils', pattern: 'src/utils/*',  mode: 'file' },
   { type: 'error', pattern: 'src/errors/*', mode: 'file' },
 ],
 // In rules:
@@ -1166,13 +1131,13 @@ the elements and add `element-types` rules:
   default: 'disallow',
   rules: [
     { from: 'entry', allow: ['core'] },
-    { from: 'core',  allow: ['utils', 'error'] },
-    { from: 'utils', allow: ['utils'] },
+    { from: 'core',  allow: ['error'] },
     { from: 'error', allow: [] },
   ],
 }],
 ```
 
+More specific patterns are listed first so they match before the broader catch-all.
 See embody's `eslint.config.js` for a full multi-layer example.
 
 ### Updating Boundaries

@@ -7,8 +7,7 @@ TODO: explain the module structure — why these directories exist and how they 
 The ESLint `boundaries` plugin enforces a DAG between modules. See `eslint.config.js`
 for the full dependency graph. In short:
 
-- `utils/` has no internal dependencies (leaf node)
-- TODO: describe other boundary rules for your specific modules
+- TODO: describe boundary rules for your specific modules
 
 ## Why no barrel files?
 

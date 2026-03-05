@@ -152,8 +152,10 @@ Use `let` only when reassignment is genuinely needed (loop counters, accumulator
 Objects and arrays returned from functions MUST be deep frozen. This codebase is consumed by
 LLMs that cannot be trusted not to mutate returned data.
 
-- **`deepFreeze`**: For objects we don't own (caller-provided, external). Clones first, returns new frozen reference
-- **`deepFreezeInPlace`**: For objects we just built (fresh results, config wrappers). Same reference, now frozen
+- **Clone + freeze**: For objects we don't own (caller-provided, external). Clones first, returns new frozen reference
+- **Freeze in place**: For objects we just built (fresh results, config wrappers). Same reference, now frozen
+
+Use a deep-freeze utility from your package's dependencies for both operations.
 
 **When to freeze**: Function return values, config objects, constants, shared defaults.
 
@@ -208,13 +210,13 @@ one thought and starts the next. Group related statements; don't break every lin
 
 ### Documentation Convention
 
-| Content                                              | Where                        | Audience     |
-| ---------------------------------------------------- | ---------------------------- | ------------ |
-| API reference (signatures, params, returns, throws)  | JSDoc/TSDoc → `docs/`        | Consumers    |
-| Consumer-facing "why" context                        | TSDoc `@remarks` → `docs/`   | Consumers    |
-| What this module does, how to navigate it            | `README.md` per directory    | Contributors |
-| Architecture, design decisions, why this approach    | `DOCS.md` per directory      | Developers   |
-| Non-obvious implementation detail                    | Inline `//` comment          | Code readers |
+| Content                                             | Where                      | Audience     |
+| --------------------------------------------------- | -------------------------- | ------------ |
+| API reference (signatures, params, returns, throws) | JSDoc/TSDoc → `docs/`      | Consumers    |
+| Consumer-facing "why" context                       | TSDoc `@remarks` → `docs/` | Consumers    |
+| What this module does, how to navigate it           | `README.md` per directory  | Contributors |
+| Architecture, design decisions, why this approach   | `DOCS.md` per directory    | Developers   |
+| Non-obvious implementation detail                   | Inline `//` comment        | Code readers |
 
 **Rules:**
 
@@ -224,33 +226,6 @@ one thought and starts the next. Group related statements; don't break every lin
   Hand-maintained: fix it or delete it if it goes stale.
 - Public functions have JSDoc/TSDoc in source; TypeDoc generates `docs/` (gitignored, CI-only)
 - `@remarks` for consumer-facing "why" context (appears alongside signatures in TypeDoc output)
-
-### Available Utilities (src/utils/)
-
-`src/utils/` ships with the template. These pure, browser-compatible helpers enable
-immutable-style programming without needing a library or `structuredClone`. Reach for them
-before writing your own.
-
-| Utility             | Use when you need to...                                              |
-| ------------------- | -------------------------------------------------------------------- |
-| `deepClone`         | Copy any value recursively — Date, RegExp, Set, Map, circular refs   |
-| `deepFreeze`        | Lock a value — returns a deeply frozen copy, original untouched      |
-| `deepFreezeInPlace` | Lock a value in place — same reference, no clone, for objects we own |
-| `deepMerge`         | Combine configs — user values override base, recursively, deep       |
-| `deepEqual`         | Compare two values structurally — same type universe as `deepClone`  |
-| `isPlainObject`     | Distinguish `{}` literals from class instances, arrays, null         |
-
-```typescript
-import deepClone from './utils/deep-clone.js';
-import deepEqual from './utils/deep-equal.js';
-import deepFreeze from './utils/deep-freeze.js';
-import deepFreezeInPlace from './utils/deep-freeze-in-place.js';
-import deepMerge from './utils/deep-merge.js';
-import isPlainObject from './utils/is-plain-object.js';
-```
-
-Boundary constraint: `src/utils/` files can only import from other `src/utils/` files (enforced
-by `eslint-plugin-boundaries`). See `src/utils/README.md` for examples.
 
 ### Type System
 
@@ -398,7 +373,7 @@ After context resets:
 14. Throw on invalid input; fail fast for critical errors
 15. Place tests in `tests/` subdirectory, `.test.ts` suffix
 16. Ensure `README.md` exists and is current in every directory you modify
-17. Deep freeze all returned objects/arrays (`deepFreeze` for external, `deepFreezeInPlace` for freshly built)
+17. Deep freeze all returned objects/arrays (clone-then-freeze for external, freeze-in-place for freshly built)
 
 ### Safety Guardrails
 

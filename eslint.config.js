@@ -49,23 +49,20 @@ export default tseslint.config(
         },
       },
       // --- Module boundaries ---
-      // utils is listed first — src/utils/** matches 'utils' before the broader 'src' catch-all
       'boundaries/ignore': ['**/tests/**/*.ts'],
       'boundaries/elements': [
-        { type: 'utils', pattern: 'src/utils/**', mode: 'file' },
         { type: 'src', pattern: 'src/**', mode: 'file' },
       ],
     },
     rules: {
       // --- Module boundaries ---
-      // utils → utils only; src → src + utils. Expand both elements and rules per package.
+      // All src files can import from other src files. Expand elements and rules per package.
       'boundaries/element-types': [
         'error',
         {
           default: 'disallow',
           rules: [
-            { from: 'src', allow: ['src', 'utils'] },
-            { from: 'utils', allow: ['utils'] },
+            { from: 'src', allow: ['src'] },
           ],
         },
       ],
@@ -80,7 +77,7 @@ export default tseslint.config(
       // Acceptable uses (see DEV.md § When `any` is OK):
       //   - Dynamic runtime values (JSON.parse, eval results)
       //   - Untyped library boundaries
-      //   - Generic utilities (deepClone, deepMerge)
+      //   - Generic utilities (e.g. deep-clone, deep-merge)
       //   - Test fixtures (intentionally breaking types)
       //   - Stub implementations (temporary mock data)
       // All `any` usage must be justified in code review.
