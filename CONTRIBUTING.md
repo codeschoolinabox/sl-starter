@@ -17,7 +17,7 @@ Thank you for your interest in contributing!
 - Follow all conventions in [DEV.md § Codebase Conventions](./DEV.md#codebase-conventions)
 - Maintain pure functional approach
 - Add tests in a `tests/` subdirectory alongside source (see [DEV.md § Test Organization](./DEV.md#test-organization))
-- Maintain `README.md` in every source directory (see [DEV.md § Per-Directory Documentation](./DEV.md#per-directory-documentation))
+- Maintain `README.md` in every source directory (see [DEV.md § Directory Documentation Convention](./DEV.md#directory-documentation-convention))
 - Update documentation as needed
 
 Full conventions with rationale and examples: see [DEV.md](./DEV.md).

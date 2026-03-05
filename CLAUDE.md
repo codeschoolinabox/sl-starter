@@ -369,7 +369,7 @@ After context resets:
 11. Add TypeScript types for all public APIs
 12. JSDoc/TSDoc for public functions; `@remarks` for consumer-facing "why"; inline comments for
     implementation "why"
-13. No `DOCS.md` files — TypeDoc generates `docs/` automatically
+13. `DOCS.md` per directory for architecture/decisions (hand-maintained, not auto-generated)
 14. Throw on invalid input; fail fast for critical errors
 15. Place tests in `tests/` subdirectory, `.test.ts` suffix
 16. Ensure `README.md` exists and is current in every directory you modify
